@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>List of Google Form Urls</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/css/bootstrap.min.css" rel="stylesheet"
+    integrity="sha384-LN+7fdVzj6u52u30Kp6M/trliBMCMKTyK833zpbD+pXdCLuTusPj697FH4R/5mcr" crossorigin="anonymous">
+  <link rel="stylesheet" href="https://cdn.datatables.net/2.3.2/css/dataTables.bootstrap5.css">
+  <style>
+    .card-text {
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container py-4">
+    <div class="row justify-items-center align-items-center mb-3">
+      <button class="btn btn-secondary me-2 col-auto" onclick="history.back()">
+        <span aria-hidden="true">&lt;</span>
+      </button>
+      <h3 id="previous" class="col-auto text-secondary">Loading ...</h3>
+      &gt;
+      <h2 id="header" class="col-auto"></h2>
+    </div>
+
+    <div class="bg-white">
+      <div id="title-container" class="list-group"></div>
+      <div id="response-container" class="list-group mb-5"></div>
+    </div>
+    <!-- Pagination -->
+    <nav aria-label="Page navigation example" class="pt-2 shadow-lg fixed-bottom bg-white">
+      <ul id="pagination" class="pagination justify-content-center"></ul>
+    </nav>
+  </div>
+
+  <script src="https://code.jquery.com/jquery-3.7.1.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.3.3/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdn.datatables.net/2.3.2/js/dataTables.js"></script>
+  <script src="https://cdn.datatables.net/2.3.2/js/dataTables.bootstrap5.js"></script>
+
+  <script>
+    let currentIndex = 0;
+
+    (async function () {
+      const urlParams = new URLSearchParams(window.location.search);
+      const formId = urlParams.get('form_id');
+      const responseId = urlParams.get('response_id');
+      const h = document.getElementById("header")
+      const container = document.getElementById('response-container');
+      const titleContainer = document.getElementById('title-container')
+      const pagination = document.getElementById('pagination');
+      const prev = document.getElementById('previous');
+
+      if (!formId) {
+        h.innerText = "Not found";
+        return;
+      }
+
+      try {
+        // Fetch JSON from your Apps Script Web App
+        const response = await fetch(`./responses/${formId}.json`);
+        const data = await response.json();
+
+        // Find the specific response
+        const resp = data?.responses.find(r => r.responseId === responseId);
+
+        if (!data.responses || data.responses.length === 0 || !resp) {
+          h.innerText = "Not found";
+          return;
+        }
+
+        h.innerText = resp.responseTitle.split('_').join(' ');
+
+        // Split items into pages
+        const pages = [];
+        let currentPage = [];
+
+        resp.items.forEach(item => {
+          if (item.type === "PAGE_BREAK") {
+            // Start new page
+            if (currentPage.length > 0) pages.push(currentPage);
+            currentPage = [item]; // optional: include page break as first item
+          } else {
+            currentPage.push(item);
+          }
+        });
+
+        if (currentPage.length > 0) pages.push(currentPage);
+
+        const d = new Date(resp.timestamp);
+
+        const formatted =
+          d.getDate().toString().padStart(2, '0') + "/" +
+          (d.getMonth() + 1).toString().padStart(2, '0') + "/" +
+          d.getFullYear() + " " +
+          d.getHours().toString().padStart(2, '0') + ":" +
+          d.getMinutes().toString().padStart(2, '0');
+
+        const card = document.createElement('div');
+        card.className = 'card mb-3';
+        const cardBody = document.createElement('div');
+        cardBody.className = 'card-body';
+        cardBody.innerHTML = `<h5 class="card-title">${resp.responseTitle || resp.responseId}</h5>
+                            <h6 class="card-subtitle mb-2 text-muted">Submitted at: ${formatted}</h6>`;
+        card.appendChild(cardBody);
+        titleContainer.appendChild(card);
+
+        function renderPage(index) {
+          container.innerHTML = '';
+          const pageItems = pages[index];
+
+          prev.innerHTML = data.title.split('-')[0]
+          h.innerText = resp.responseTitle.split('_').join(' ') + " (หน้าที่ " + (index + 1) + ")"
+
+          pageItems.forEach(item => {
+            const itemCard = document.createElement('div');
+            itemCard.className = 'card mb-2';
+
+            const itemBody = document.createElement('div');
+            itemBody.className = 'card-body';
+
+            // Item title
+            const itemTitle = document.createElement('h6');
+            itemTitle.className = 'card-title';
+            itemTitle.textContent = `${item.title}`;
+            itemBody.appendChild(itemTitle);
+
+            // Description / help text
+            if (item.description) {
+              const desc = document.createElement('p');
+              desc.className = 'card-text text-muted';
+              desc.textContent = item.description;
+              itemBody.appendChild(desc);
+            }
+
+            // Answer rendering based on type
+            const answer = document.createElement('p');
+            answer.className = 'card-text';
+
+            if (item.answer === null && (item.type !== 'SECTION_HEADER' && item.type !== 'PAGE_BREAK')) {
+              answer.classList.add('text-primary')
+              answer.textContent = "(No response / not answerable)";
+            } else {
+              const incorrect = ['no', 'Not Relevant', 'No', 'Incorrect']
+              let color
+              if (Array.isArray(item.answer)) {
+                color = incorrect.some(c => item.answer.some(a => a.includes(c))) ? 'danger' : 'success';
+              } else {
+                color = incorrect.some(c => item.answer?.includes(c)) ? 'danger' : 'success';
+              }
+
+              switch (item.type) {
+                case 'TEXT':
+                case 'PARAGRAPH_TEXT':
+                  answer.style.whiteSpace = 'pre-wrap';
+                  answer.classList.add(item.answer ? 'text-danger' : 'text-primary')
+                  answer.textContent = item.answer || "(No response / not answerable)";
+                  break;
+
+                case 'LIST':
+                case 'MULTIPLE_CHOICE':
+                  if (Array.isArray(item.answer)) {
+                    answer.innerHTML = 'Selected: ' + item.answer.map(a => `<span class="badge bg-${color} me-1">${a}</span>`).join(' ');
+                  } else {
+                    answer.innerHTML = `Selected: <span class="badge bg-${color} me-1">${item.answer}</span>`;
+                  }
+                  break;
+                case 'CHECKBOX':
+                  if (Array.isArray(item.answer)) {
+                    answer.innerHTML = 'Selected: ' + item.answer.map(a => `<span class="badge bg-${color} me-1">${a}</span>`).join(' ');
+                  } else {
+                    answer.innerHTML = `Selected: <span class="badge bg-${color} me-1">${item.answer}</span>`;
+                  }
+                  break;
+
+                case 'SCALE':
+                  // Assume scale from 1 to N and item.answer is the selected value
+                  const min = item.scaleMin || 1;
+                  const max = item.scaleMax || 5;
+                  for (let i = min; i <= max; i++) {
+                    const div = document.createElement('div');
+                    div.className = 'form-check form-check-inline';
+                    div.innerHTML = `
+                    <input 
+                      class="form-check-input" 
+                      type="radio" 
+                      name="q_${item.id}" 
+                      disabled 
+                      ${item.answer == i ? 'checked' : ''}>
+                    <label class="form-check-label">${i}</label>`;
+
+                    itemBody.append(div)
+                  }
+                  break;
+
+                case 'GRID':
+                case 'CHECKBOX_GRID':
+                  // For grid, answer may be an object {row: column, ...}
+                  if (typeof item.answer === 'object') {
+                    const lines = [];
+                    for (const [row, col] of Object.entries(item.answer)) {
+                      lines.push(`${row}: ${col}`);
+                    }
+                    answer.style.whiteSpace = 'pre-wrap';
+                    answer.textContent = lines.join('\n');
+                  } else {
+                    answer.textContent = item.answer;
+                  }
+                  break;
+                case 'SECTION_HEADER':
+                  itemCard.classList.add('border-0')
+                  break;
+                case 'PAGE_BREAK':
+                  itemCard.classList.add('border-0')
+                  break
+
+                default:
+                  answer.textContent = item.answer;
+              }
+            }
+
+            itemBody.appendChild(answer);
+            itemCard.appendChild(itemBody);
+            container.appendChild(itemCard);
+          });
+
+          // Render pagination numbers
+          pagination.innerHTML = '';
+          for (let i = 0; i < pages.length; i++) {
+            const li = document.createElement('li');
+            li.className = 'page-item' + (i === index ? ' active' : '');
+            const a = document.createElement('a');
+            a.className = 'page-link';
+            a.href = '#';
+            a.textContent = i + 1;
+            a.onclick = (e) => {
+              e.preventDefault();
+              currentIndex = i;
+              renderPage(currentIndex);
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            };
+            li.appendChild(a);
+            pagination.appendChild(li);
+          }
+        }
+      } catch (e) {
+        h.innerText = "Not found";
+        console.error(e)
+      }
+
+      renderPage(currentIndex);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    })()
+  </script>
+</body>
+
+</html>
