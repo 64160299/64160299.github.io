@@ -49,7 +49,7 @@
       navigator.clipboard.writeText(str);
     }
 
-    fetch('updated_form_links.json').then(response => response.json()).then(data => {
+    fetch('responded_form_links.json').then(response => response.json()).then(data => {
       const t = document.getElementById("t-url-body")
 
       data.forEach((d, i) => {
